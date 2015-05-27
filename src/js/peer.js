@@ -1,24 +1,22 @@
 'use strict';
 
-var dataChannel,
-  dataChannelConnected,
-  bufferedMessages = [],
-  userName;
+var dataChannel;
+var dataChannelConnected;
+var bufferedMessages = [];
+var userName;
+
 exports.init = function(opts) {
   userName = opts.name;
-  var host = opts.host || window.location.host.split(':')[0],
-    bridge = host + ':9001',
-    RTCPeerConnection = opts.RTCPeerConnection,
-    RTCSessionDescription = opts.RTCSessionDescription,
-    RTCIceCandidate = opts.RTCIceCandidate,
-    pendingCandidates = [],
-    ws,
-    pc,
-    $messages = document.querySelector('#messages');
 
-  function handleError(error) {
-    throw error;
-  }
+  var host = opts.host || window.location.host.split(':')[0];
+  var bridge = host + ':9001';
+  var RTCPeerConnection = opts.RTCPeerConnection;
+  var RTCSessionDescription = opts.RTCSessionDescription;
+  var RTCIceCandidate = opts.RTCIceCandidate;
+  var pendingCandidates = [];
+  var ws;
+  var pc;
+  var $messages = document.querySelector('#messages');
 
   function createPeerConnection() {
     pc = new RTCPeerConnection({
@@ -26,33 +24,42 @@ exports.init = function(opts) {
         url: 'stun:stun.l.google.com:19302'
       }]
     });
-    pc.onsignalingstatechange = function(event) {
-      console.info('signaling state change: ', event.target.signalingState);
-    };
-    pc.oniceconnectionstatechange = function(event) {
-      console.info('ice connection state change: ', event.target.iceConnectionState);
-    };
-    pc.onicegatheringstatechange = function(event) {
-      console.info('ice gathering state change: ', event.target.iceGatheringState);
-    };
-    pc.onicecandidate = function(event) {
+
+    [
+      'signalingstatechange',
+      'iceconnectionstatechange',
+      'icegatheringstatechange',
+      'icecandidate'
+    ].forEach(function(evtName) {
+      pc.addEventListener(evtName, function(event) {
+        console.log(evtName, event);
+      });
+    });
+
+    pc.addEventListener('icecandidate', function(event) {
       var candidate = event.candidate;
-      if (!candidate) return;
+
+      if (!candidate) {
+        return;
+      }
+
       if (ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({
-          'type': 'ice',
-          'sdp': {
-            'candidate': candidate.candidate,
-            'sdpMid': candidate.sdpMid,
-            'sdpMLineIndex': candidate.sdpMLineIndex
+          type: 'ice',
+          sdp: {
+            candidate: candidate.candidate,
+            sdpMid: candidate.sdpMid,
+            sdpMLineIndex: candidate.sdpMLineIndex
           }
         }));
       } else {
         pendingCandidates.push(candidate);
       }
-    };
+    });
+
     createDataChannels();
   }
+
   createPeerConnection();
 
   function createDataChannels() {
@@ -60,8 +67,10 @@ exports.init = function(opts) {
       ordered: true,
       maxRetransmits: 10
     });
+
     dataChannel.binaryType = 'arraybuffer';
-    dataChannel.onopen = function() {
+
+    dataChannel.addEventListener('open', function() {
       console.log('complete');
       ws.close();
       dataChannelConnected = true;
@@ -69,13 +78,15 @@ exports.init = function(opts) {
         dataChannel.send(message);
       });
       bufferedMessages = [];
-    };
+    });
 
-    dataChannel.onmessage = function(event) {
+    dataChannel.addEventListener('message', function(event) {
       if (typeof event.data === 'string') {
-        var msg = JSON.parse(event.data),
-          msgEl = document.createElement('li');
+        var msg = JSON.parse(event.data);
+        var msgEl = document.createElement('li');
+
         msgEl.innerHTML = '<strong>' + msg.name + '</strong>: ';
+
         if (msg.type === 'image') {
           console.log('onimage');
           var img = document.createElement('img');
@@ -85,24 +96,30 @@ exports.init = function(opts) {
           console.log('onmessage:', msg.text);
           msgEl.innerHTML += msg.text;
         }
+
         $messages.appendChild(msgEl);
       } else {
         console.log('onmessage:', new Uint8Array(event.data));
       }
-    };
+    });
 
-    dataChannel.onclose = function() {
+    dataChannel.addEventListener('close', function() {
       console.info('onclose');
-    };
+    });
 
-    dataChannel.onerror = handleError;
+    dataChannel.addEventListener('error', function(err) {
+      throw err;
+    });
+
     createOffer();
   }
 
   function createOffer() {
     pc.createOffer(
       setLocalDesc,
-      handleError
+      function(err) {
+        throw err;
+      }
     );
   }
 
@@ -110,13 +127,16 @@ exports.init = function(opts) {
     pc.setLocalDescription(
       new RTCSessionDescription(desc),
       sendOffer.bind(undefined, desc),
-      handleError
+      function(err) {
+        throw err;
+      }
     );
   }
 
   function sendOffer(offer) {
     ws = new WebSocket('ws://' + bridge);
-    ws.onopen = function() {
+
+    ws.addEventListener('open', function() {
       pendingCandidates.forEach(function(candidate) {
         ws.send(JSON.stringify({
           type: 'ice',
@@ -127,13 +147,16 @@ exports.init = function(opts) {
           }
         }));
       });
+
       ws.send(JSON.stringify({
         type: offer.type,
         sdp: offer.sdp
       }));
-    };
-    ws.onmessage = function(event) {
+    });
+
+    ws.addEventListener('message', function(event) {
       var data = JSON.parse(event.data);
+
       if (data.type === 'answer') {
         setRemoteDesc(data);
       } else if (data.type === 'ice') {
@@ -142,16 +165,18 @@ exports.init = function(opts) {
           pc.addIceCandidate(candidate);
         }
       }
-    };
+    });
   }
 
   function setRemoteDesc(desc) {
     pc.setRemoteDescription(
       new RTCSessionDescription(desc),
-      function () {
+      function() {
         console.log('awaiting data channels');
       },
-      handleError
+      function(err) {
+        throw err;
+      }
     );
   }
 };
@@ -162,6 +187,7 @@ exports.send = function(text, img) {
     type: img ? 'image' : 'text',
     text: text
   });
+
   if (!dataChannelConnected) {
     bufferedMessages.push(msg);
   } else {
