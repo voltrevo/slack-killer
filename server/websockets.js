@@ -1,3 +1,5 @@
+'use strict';
+
 // Creates a websocket server and establishes a PeerConnection for every client that connects.
 // Going through the usual offer, answer ice candidate process.
 
@@ -62,7 +64,7 @@ module.exports = function (host, socketPort) {
 
     socket.on('message', function(data) {
       data = JSON.parse(data);
-      if ('offer' == data.type) {
+      if (data.type === 'offer') {
         offer = new webrtc.RTCSessionDescription(data);
         answer = null;
         remoteReceived = false;
@@ -98,7 +100,7 @@ module.exports = function (host, socketPort) {
 
         dataChannels.add(pc);
         setRemoteDesc();
-      } else if ('ice' == data.type) {
+      } else if (data.type === 'ice') {
         if (remoteReceived) {
           if (data.sdp.candidate) {
             pc.addIceCandidate(new webrtc.RTCIceCandidate(data.sdp.candidate));
