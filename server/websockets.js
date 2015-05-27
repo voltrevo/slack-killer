@@ -3,7 +3,7 @@
 
 var ws = require('ws');
 var webrtc = require('wrtc');
-var dataChannels = require('./datachannels.js');
+var dataChannels = require('./datachannels')();
 
 module.exports = function (host, socketPort) {
   var wss = new ws.Server({
