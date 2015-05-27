@@ -9,85 +9,113 @@ var dataChannels = require('./datachannels')();
 
 module.exports = function (host, socketPort) {
   var wss = new ws.Server({
-      'port': socketPort
-    });
+    'port': socketPort
+  });
 
   wss.on('connection', function(socket) {
-    var pc = null,
-      offer = null,
-      answer = null,
-      remoteReceived = false,
-      pendingCandidates = [];
+    console.log('socket connected');
 
-    console.info('socket connected');
-
-    function handleError(error) {
-      throw error;
-    }
+    var pc = null;
+    var offer = null;
+    var remoteReceived = false;
+    var pendingCandidates = [];
 
     function createAnswer() {
       remoteReceived = true;
+
       pendingCandidates.forEach(function(candidate) {
         if (candidate.sdp) {
           pc.addIceCandidate(new webrtc.RTCIceCandidate(candidate.sdp));
         }
       });
+
       pc.createAnswer(
         setLocalDesc,
-        handleError
+        function(err) {
+          throw err;
+        }
       );
     }
 
     function setLocalDesc(desc) {
-      answer = desc;
-      console.info(desc);
+      logData('setLocalDesc', desc);
+
       pc.setLocalDescription(
         desc,
-        sendAnswer,
-        handleError
+        function() {
+          socket.send(JSON.stringify(desc));
+          console.log('awaiting data channels');
+        },
+        function(err) {
+          throw err;
+        }
       );
-    }
-
-    function sendAnswer() {
-      socket.send(JSON.stringify(answer));
-      console.log('awaiting data channels');
     }
 
     function setRemoteDesc() {
-      console.info(offer);
+      logData('setRemoteDesc', offer);
+
       pc.setRemoteDescription(
         offer,
         createAnswer,
-        handleError
+        function(err) {
+          throw err;
+        }
       );
+    }
+
+    function logData(note, data) {
+      data = JSON.parse(JSON.stringify(data));
+
+      if (typeof data.sdp === 'string') {
+        data.sdp = data.sdp.split('\r\n');
+      }
+
+      console.log(note, data);
     }
 
     socket.on('message', function(data) {
       data = JSON.parse(data);
-      if (data.type === 'offer') {
+
+      logData('message', data);
+
+      if (data.type === 'ice') {
+        if (remoteReceived) {
+          if (data.sdp.candidate) {
+            pc.addIceCandidate(new webrtc.RTCIceCandidate(data.sdp.candidate));
+          }
+        } else {
+          pendingCandidates.push(data);
+        }
+      } else if (data.type === 'offer') {
         offer = new webrtc.RTCSessionDescription(data);
-        answer = null;
         remoteReceived = false;
 
-        pc = new webrtc.RTCPeerConnection({
-          iceServers: [{
-            url: 'stun:stun.l.google.com:19302'
-          }]
-        }, {
-          'optional': [{
-            DtlsSrtpKeyAgreement: false
-          }]
+        pc = new webrtc.RTCPeerConnection(
+          {
+            iceServers: [{
+              url: 'stun:stun.l.google.com:19302'
+            }]
+          },
+          {
+            'optional': [{
+              DtlsSrtpKeyAgreement: false
+            }]
+          }
+        );
+
+        [
+          'signalingStateChange',
+          'iceConnectionStateChange',
+          'iceGatheringStateChange',
+          'iceCandidate'
+        ].forEach(function(evtName) {
+          pc.addEventListener(evtName, function(state) {
+            logData(evtName, state);
+          });
         });
-        pc.onsignalingstatechange = function(state) {
-          console.info('signaling state change:', state);
-        };
-        pc.oniceconnectionstatechange = function(state) {
-          console.info('ice connection state change:', state);
-        };
-        pc.onicegatheringstatechange = function(state) {
-          console.info('ice gathering state change:', state);
-        };
-        pc.onicecandidate = function(candidate) {
+
+        pc.addEventListener('iceCandidate', function(candidate) {
           socket.send(JSON.stringify({
             type: 'ice',
             sdp: {
@@ -96,18 +124,12 @@ module.exports = function (host, socketPort) {
               sdpMLineIndex: candidate.sdpMLineIndex
             }
           }));
-        };
+        });
 
         dataChannels.add(pc);
         setRemoteDesc();
-      } else if (data.type === 'ice') {
-        if (remoteReceived) {
-          if (data.sdp.candidate) {
-            pc.addIceCandidate(new webrtc.RTCIceCandidate(data.sdp.candidate));
-          }
-        } else {
-          pendingCandidates.push(data);
-        }
+      } else {
+        throw new Error('Unexpected data.type: ' + data.type);
       }
     });
   });
