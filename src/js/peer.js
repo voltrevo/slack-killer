@@ -4,12 +4,12 @@ module.exports = function() {
   var dataChannel;
   var dataChannelConnected;
   var bufferedMessages = [];
-  var userName;
+  var username;
 
   var api = {};
 
   api.init = function(opts) {
-    userName = opts.name;
+    username = opts.username;
 
     var host = opts.host || window.location.host.split(':')[0];
     var bridge = host + ':9001';
@@ -186,7 +186,7 @@ module.exports = function() {
 
   api.send = function(text, img) {
     var msg = JSON.stringify({
-      name: userName,
+      name: username,
       type: img ? 'image' : 'text',
       text: text
     });

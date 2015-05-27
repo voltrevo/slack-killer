@@ -1,22 +1,31 @@
-(function(global) {
-  var peer = require('./peer.js')(),
-    form = require('./messageform.js'),
-    imagedropper = require('./imagedropper.js'),
-    name;
+'use strict';
 
-  while (!name) {
-    name = prompt('Please enter your name');
-  }
-  peer.init({
-    name: name,
-    RTCPeerConnection: global.mozRTCPeerConnection || global.webkitRTCPeerConnection ||
-      global.RTCPeerConnection,
-    RTCSessionDescription: global.mozRTCSessionDescription || global.webkitRTCSessionDescription ||
-      global.RTCSessionDescription,
-    RTCIceCandidate: global.mozRTCIceCandidate || global.webkitRTCIceCandidate ||
-      global.RTCIceCandidate
-  });
-  imagedropper.init(document.querySelector('#message'), function (imgData) {
-    peer.send(imgData, true);
-  });
-})(window);
+var peer = require('./peer.js')();
+
+require('./messageform.js')(
+  peer,
+  document.querySelector('#message'),
+  document.querySelector('#messageForm')
+);
+
+var imagedropper = require('./imagedropper.js');
+
+var username;
+while (!username) {
+  username = window.prompt('Please enter your name');
+}
+
+var getMaybePrefixedProperty = function(obj, prop) {
+  return obj[prop] || obj['moz' + prop] || obj['webkit' + prop];
+};
+
+peer.init({
+  username: username,
+  RTCPeerConnection: getMaybePrefixedProperty(global, 'RTCPeerConnection'),
+  RTCSessionDescription: getMaybePrefixedProperty(global, 'RTCSessionDescription'),
+  RTCIceCandidate: getMaybePrefixedProperty(global, 'RTCIceCandidate')
+});
+
+imagedropper.init(document.querySelector('#message'), function (imgData) {
+  peer.send(imgData, true);
+});

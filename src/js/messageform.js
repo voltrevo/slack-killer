@@ -1,10 +1,10 @@
-var peer = require('./peer.js'),
-  $messageInput = document.querySelector('#message'),
-  $messageForm = document.querySelector('#messageForm');
+'use strict';
 
-$messageForm.addEventListener('submit', function (event) {
-  event.preventDefault();
-  var msg = $messageInput.value;
-  $messageInput.value = '';
-  peer.send(msg);
-});
+module.exports = function(peer, $messageInput, $messageForm) {
+  $messageForm.addEventListener('submit', function (event) {
+    event.preventDefault();
+    var msg = $messageInput.value;
+    $messageInput.value = '';
+    peer.send(msg);
+  });
+};
