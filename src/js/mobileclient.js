@@ -1,4 +1,4 @@
-var peer = require('./peer.js'),
+var peer = require('./peer.js')(),
   form = require('./messageform.js');
 document.addEventListener('deviceready', function () {
   var name,
